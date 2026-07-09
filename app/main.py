@@ -1,4 +1,8 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+
+from app.database import engine
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import analytics, datasets, recommendations
@@ -31,3 +35,21 @@ def root() -> dict[str, str]:
 @app.get("/health", tags=["Health"])
 def health() -> dict[str, str]:
     return {"status": "ok"}
+@app.get("/health/database", tags=["Health"])
+def database_health() -> dict[str, str]:
+    try:
+        with engine.connect() as connection:
+            database_name = connection.execute(
+                text("SELECT DATABASE()")
+            ).scalar()
+
+        return {
+            "status": "ok",
+            "database": str(database_name),
+        }
+
+    except SQLAlchemyError:
+        raise HTTPException(
+            status_code=503,
+            detail="Database connection is unavailable",
+        )
