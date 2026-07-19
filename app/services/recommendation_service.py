@@ -7,13 +7,16 @@ from app.services.analytics_service import analytics_service
 
 class RecommendationService:
     def simple_forecast(self, days: int, limit: int) -> list[ForecastPoint]:
-        rows = analytics_service._valid_rows()
-        latest_date = max(row["date"] for row in rows)
+        rows = analytics_service.daily_quantity_rows()
+        latest_date = analytics_service.latest_sales_date()
+        if not rows or latest_date is None:
+            return []
+
         daily_quantities: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
 
         for row in rows:
             menu_item = str(row["menu_item_name"])
-            daily_quantities[menu_item][row["date"].isoformat()] += int(row["quantity_sold"])
+            daily_quantities[menu_item][row["sales_date"].isoformat()] += int(row["quantity_sold"])
 
         averages = []
         for menu_item, by_day in daily_quantities.items():

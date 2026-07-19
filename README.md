@@ -22,10 +22,35 @@ API docs:
 http://127.0.0.1:8000/docs
 ```
 
+## Database
+
+The analytics endpoints read from the MySQL database.
+
+Before testing analytics APIs:
+
+1. Start MySQL from XAMPP or your local MySQL service.
+2. Import the populated `smart_restaurant_db.sql` file from the database branch.
+3. Create a local `.env` file using `.env.example`.
+4. Confirm the database connection:
+
+```text
+GET /health/database
+```
+
+Expected response:
+
+```json
+{
+  "status": "ok",
+  "database": "smart_restaurant_db"
+}
+```
+
 ## Initial Endpoints
 
 ```text
 GET  /health
+GET  /health/database
 GET  /datasets/profile
 POST /datasets/upload
 POST /datasets/load-sample

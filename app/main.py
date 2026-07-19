@@ -1,4 +1,5 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -27,6 +28,17 @@ app.include_router(analytics.router)
 app.include_router(recommendations.router)
 
 
+@app.exception_handler(SQLAlchemyError)
+def sqlalchemy_exception_handler(
+    _request: Request,
+    _exception: SQLAlchemyError,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Database connection is unavailable"},
+    )
+
+
 @app.get("/", tags=["Health"])
 def root() -> dict[str, str]:
     return {"message": "Smart Restaurant DSS API is running"}
@@ -35,6 +47,8 @@ def root() -> dict[str, str]:
 @app.get("/health", tags=["Health"])
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
 @app.get("/health/database", tags=["Health"])
 def database_health() -> dict[str, str]:
     try:

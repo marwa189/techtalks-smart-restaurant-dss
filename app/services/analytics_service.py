@@ -1,6 +1,9 @@
-from collections import defaultdict
+from datetime import date
 from typing import Any
 
+from sqlalchemy import text
+
+from app.database import engine
 from app.schemas import (
     HighWasteLowSalesItem,
     MenuItemMetric,
@@ -8,40 +11,69 @@ from app.schemas import (
     SummaryMetrics,
     WasteMetric,
 )
-from app.services.dataset_service import dataset_store
 
 
 class AnalyticsService:
     def summary(self) -> SummaryMetrics:
-        rows = self._valid_rows()
+        query = text(
+            """
+            SELECT
+                (SELECT COUNT(*) FROM sales_record_table) AS total_records,
+                COALESCE((SELECT SUM(quantity_sold) FROM sales_record_table), 0) AS total_quantity_sold,
+                COALESCE((SELECT SUM(quantity_sold * actual_selling_price) FROM sales_record_table), 0) AS total_revenue,
+                COALESCE((SELECT SUM(waste_quantity) FROM waste_record_table), 0) AS total_waste_quantity,
+                COALESCE((SELECT AVG(waste_ratio) FROM waste_record_table), 0) AS average_waste_ratio,
+                (SELECT COUNT(*) FROM menu_table) AS unique_menu_items
+            """
+        )
+        row = self._fetch_one(query)
         return SummaryMetrics(
-            total_records=len(rows),
-            total_quantity_sold=sum(int(row["quantity_sold"]) for row in rows),
-            total_revenue=round(sum(self._revenue(row) for row in rows), 2),
-            total_waste_quantity=round(sum(float(row["waste_quantity"]) for row in rows), 2),
-            average_waste_ratio=round(self._average([float(row["waste_ratio"]) for row in rows]), 4),
-            unique_menu_items=len({str(row["menu_item_name"]) for row in rows}),
+            total_records=int(row["total_records"]),
+            total_quantity_sold=int(row["total_quantity_sold"]),
+            total_revenue=round(float(row["total_revenue"]), 2),
+            total_waste_quantity=round(float(row["total_waste_quantity"]), 2),
+            average_waste_ratio=round(float(row["average_waste_ratio"]), 4),
+            unique_menu_items=int(row["unique_menu_items"]),
         )
 
     def sales_trends(self, group_by: str) -> list[SalesTrendPoint]:
-        grouped: dict[str, dict[str, float]] = defaultdict(
-            lambda: {"quantity_sold": 0, "revenue": 0.0, "waste_quantity": 0.0}
+        date_expression = (
+            "DATE_FORMAT(sales_date, '%Y-%m')" if group_by == "month" else "sales_date"
         )
-        for row in self._valid_rows():
-            record_date = row["date"]
-            period = record_date.strftime("%Y-%m") if group_by == "month" else record_date.isoformat()
-            grouped[period]["quantity_sold"] += int(row["quantity_sold"])
-            grouped[period]["revenue"] += self._revenue(row)
-            grouped[period]["waste_quantity"] += float(row["waste_quantity"])
-
+        query = text(
+            f"""
+            SELECT
+                sales_metrics.period,
+                sales_metrics.quantity_sold,
+                sales_metrics.revenue,
+                COALESCE(waste_metrics.waste_quantity, 0) AS waste_quantity
+            FROM (
+                SELECT
+                    {date_expression} AS period,
+                    COALESCE(SUM(quantity_sold), 0) AS quantity_sold,
+                    COALESCE(SUM(quantity_sold * actual_selling_price), 0) AS revenue
+                FROM sales_record_table
+                GROUP BY {date_expression}
+            ) AS sales_metrics
+            LEFT JOIN (
+                SELECT
+                    {"DATE_FORMAT(waste_date, '%Y-%m')" if group_by == "month" else "waste_date"} AS period,
+                    COALESCE(SUM(waste_quantity), 0) AS waste_quantity
+                FROM waste_record_table
+                GROUP BY {"DATE_FORMAT(waste_date, '%Y-%m')" if group_by == "month" else "waste_date"}
+            ) AS waste_metrics
+                ON sales_metrics.period = waste_metrics.period
+            ORDER BY sales_metrics.period
+            """
+        )
         return [
             SalesTrendPoint(
-                period=period,
-                quantity_sold=int(values["quantity_sold"]),
-                revenue=round(values["revenue"], 2),
-                waste_quantity=round(values["waste_quantity"], 2),
+                period=self._period_to_string(row["period"]),
+                quantity_sold=int(row["quantity_sold"]),
+                revenue=round(float(row["revenue"]), 2),
+                waste_quantity=round(float(row["waste_quantity"]), 2),
             )
-            for period, values in sorted(grouped.items())
+            for row in self._fetch_all(query)
         ]
 
     def top_menu_items(self, limit: int) -> list[MenuItemMetric]:
@@ -104,48 +136,89 @@ class AnalyticsService:
         ]
 
     def menu_metric_rows(self, sort_key: str, limit: int) -> list[dict[str, Any]]:
-        grouped: dict[str, dict[str, Any]] = {}
-        ratios: dict[str, list[float]] = defaultdict(list)
-
-        for row in self._valid_rows():
-            name = str(row["menu_item_name"])
-            grouped.setdefault(
-                name,
-                {
-                    "menu_item_name": name,
-                    "quantity_sold": 0,
-                    "revenue": 0.0,
-                    "waste_quantity": 0.0,
-                    "waste_cost": 0.0,
-                },
-            )
-            grouped[name]["quantity_sold"] += int(row["quantity_sold"])
-            grouped[name]["revenue"] += self._revenue(row)
-            grouped[name]["waste_quantity"] += float(row["waste_quantity"])
-            grouped[name]["waste_cost"] += self._waste_cost(row)
-            ratios[name].append(float(row["waste_ratio"]))
-
-        results = []
-        for name, values in grouped.items():
-            values["average_waste_ratio"] = self._average(ratios[name])
-            results.append(values)
-        return sorted(results, key=lambda row: row[sort_key], reverse=True)[:limit]
-
-    def _valid_rows(self) -> list[dict[str, Any]]:
-        return [
-            row
-            for row in dataset_store.rows()
-            if row.get("date") is not None and row.get("restaurant_type") != "restaurant_type"
-        ]
-
-    def _revenue(self, row: dict[str, Any]) -> float:
-        return float(row["quantity_sold"]) * float(row["actual_selling_price"])
-
-    def _waste_cost(self, row: dict[str, Any]) -> float:
-        return float(row["waste_quantity"]) * float(row["typical_ingredient_cost"])
+        allowed_sort_keys = {
+            "quantity_sold": "quantity_sold",
+            "revenue": "revenue",
+            "waste_quantity": "waste_quantity",
+            "waste_cost": "waste_cost",
+            "average_waste_ratio": "average_waste_ratio",
+        }
+        order_column = allowed_sort_keys.get(sort_key, "revenue")
+        query = text(
+            f"""
+            SELECT
+                menu.menu_item_name,
+                COALESCE(sales.quantity_sold, 0) AS quantity_sold,
+                COALESCE(sales.revenue, 0) AS revenue,
+                COALESCE(waste.waste_quantity, 0) AS waste_quantity,
+                COALESCE(waste.waste_quantity * menu.typical_ingredient_cost, 0) AS waste_cost,
+                COALESCE(waste.average_waste_ratio, 0) AS average_waste_ratio
+            FROM menu_table AS menu
+            LEFT JOIN (
+                SELECT
+                    MenuID,
+                    SUM(quantity_sold) AS quantity_sold,
+                    SUM(quantity_sold * actual_selling_price) AS revenue
+                FROM sales_record_table
+                GROUP BY MenuID
+            ) AS sales
+                ON menu.MenuID = sales.MenuID
+            LEFT JOIN (
+                SELECT
+                    MenuID,
+                    SUM(waste_quantity) AS waste_quantity,
+                    AVG(waste_ratio) AS average_waste_ratio
+                FROM waste_record_table
+                GROUP BY MenuID
+            ) AS waste
+                ON menu.MenuID = waste.MenuID
+            ORDER BY {order_column} DESC
+            LIMIT :limit
+            """
+        )
+        return self._fetch_all(query, {"limit": limit})
 
     def _average(self, values: list[float]) -> float:
         return sum(values) / len(values) if values else 0.0
+
+    def daily_quantity_rows(self) -> list[dict[str, Any]]:
+        query = text(
+            """
+            SELECT
+                menu.menu_item_name,
+                sales.sales_date,
+                SUM(sales.quantity_sold) AS quantity_sold
+            FROM sales_record_table AS sales
+            JOIN menu_table AS menu
+                ON sales.MenuID = menu.MenuID
+            GROUP BY menu.menu_item_name, sales.sales_date
+            ORDER BY sales.sales_date, menu.menu_item_name
+            """
+        )
+        return self._fetch_all(query)
+
+    def latest_sales_date(self) -> date | None:
+        query = text("SELECT MAX(sales_date) AS latest_date FROM sales_record_table")
+        row = self._fetch_one(query)
+        return row["latest_date"]
+
+    def _fetch_all(
+        self, query: Any, params: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        with engine.connect() as connection:
+            return [dict(row) for row in connection.execute(query, params or {}).mappings()]
+
+    def _fetch_one(
+        self, query: Any, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        with engine.connect() as connection:
+            row = connection.execute(query, params or {}).mappings().first()
+            return dict(row) if row else {}
+
+    def _period_to_string(self, period: Any) -> str:
+        if hasattr(period, "isoformat"):
+            return period.isoformat()
+        return str(period)
 
 
 analytics_service = AnalyticsService()
