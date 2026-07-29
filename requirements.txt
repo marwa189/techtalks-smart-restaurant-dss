@@ -5,3 +5,7 @@ pydantic==2.10.5
 SQLAlchemy==2.0.41
 PyMySQL==1.1.1
 python-dotenv==1.1.0
+pandas==2.2.2
+numpy==1.26.4
+scikit-learn==1.6.1
+joblib==1.4.2
