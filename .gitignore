@@ -1,8 +1,9 @@
-.env
-*.pkl
+.venv/
 __pycache__/
 *.py[cod]
 .pytest_cache/
 .ruff_cache/
+.env
+*.pkl
 .vscode/mcp.json
 ~$*.docx
