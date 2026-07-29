@@ -1,3 +1,6 @@
+"use client";
+import { useEffect, useState } from "react";
+import { getDashboardSummary, type DashboardSummary } from "@/lib/api";
 import {
   AlertTriangle,
   ArrowUpRight,
@@ -133,6 +136,25 @@ const inventoryRows = [
 ];
 
 export default function Home() {
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+  async function fetchSummary() {
+    try {
+      const data = await getDashboardSummary();
+      console.log("Dashboard summary:", data);
+      setSummary(data);
+    } catch (err) {
+      console.error("Dashboard summary error:", err);
+      setError("Could not load dashboard summary");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  fetchSummary();
+}, []);
   return (
     <div className="min-h-screen bg-[#eef6f5] p-4 text-slate-800 sm:p-6 lg:p-8">
       <div className="mx-auto flex max-w-7xl flex-col gap-4 lg:flex-row">
