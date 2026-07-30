@@ -39,9 +39,9 @@ export function AppShell({ title, subtitle, description, children }: AppShellPro
   const pathname = usePathname();
 
   return (
-    <div className="min-h-screen bg-[#eef6f5] p-4 text-slate-800 sm:p-6 lg:p-8">
-      <div className="mx-auto flex max-w-7xl flex-col gap-4 lg:flex-row">
-        <aside className="flex w-full flex-col justify-between rounded-[32px] bg-[#0f766e] p-5 text-white shadow-[0_24px_60px_rgba(15,118,110,0.25)] lg:w-72 lg:p-6">
+    <div className="min-h-screen bg-[#eef6f5] p-4 text-slate-800 sm:p-6 lg:p-8">  
+      <div className="mx-auto flex max-w-7xl gap-4">
+        <aside className="fixed left-4 top-4 bottom-4 z-50 hidden w-72 flex-col justify-between rounded-[32px] bg-[#0f766e] p-5 text-white shadow-[0_24px_60px_rgba(15,118,110,0.25)] lg:flex lg:p-6">
           <div>
             <div className="mb-8 flex items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/20">
@@ -86,7 +86,7 @@ export function AppShell({ title, subtitle, description, children }: AppShellPro
           </div>
         </aside>
 
-        <main className="flex-1 space-y-4">
+        <main className="ml-0 flex-1 space-y-4 lg:ml-76">
           <div className="flex flex-col gap-3 rounded-[28px] border border-slate-200/80 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-5">
             <div>
               <p className="text-sm font-medium text-teal-700">{subtitle ?? "Smart Restaurant Decision Support"}</p>
