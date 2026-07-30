@@ -1,4 +1,15 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "../components/app-shell";
+import {
+  getDashboardSummary,
+  getSalesTrends,
+  getTopMenuItems,
+  type DashboardSummary,
+  type MenuItemMetric,
+  type SalesTrendPoint,
+} from "../../lib/api";
 import {
   ArrowUpRight,
   CircleDollarSign,
@@ -7,38 +18,7 @@ import {
   UtensilsCrossed,
 } from "lucide-react";
 
-const summaryCards = [
-  {
-    title: "Revenue summary",
-    value: "$1.24M",
-    detail: "Weekly sales across core menu items",
-    icon: CircleDollarSign,
-    tone: "bg-teal-50 text-teal-700",
-  },
-  {
-    title: "Quantity sold",
-    value: "18,420",
-    detail: "Units moved across the last 7 days",
-    icon: PackageCheck,
-    tone: "bg-emerald-50 text-emerald-700",
-  },
-  {
-    title: "Average ticket",
-    value: "$16.80",
-    detail: "Estimated basket size per order",
-    icon: TrendingUp,
-    tone: "bg-amber-50 text-amber-700",
-  },
-  {
-    title: "Top performer",
-    value: "Tandoori Chicken",
-    detail: "Highest revenue item this week",
-    icon: UtensilsCrossed,
-    tone: "bg-sky-50 text-sky-700",
-  },
-];
-
-const trendBars = [
+const fallbackTrendBars = [
   { label: "Mon", height: "46%" },
   { label: "Tue", height: "58%" },
   { label: "Wed", height: "66%" },
@@ -48,25 +28,145 @@ const trendBars = [
   { label: "Sun", height: "78%" },
 ];
 
-const topItems = [
+const fallbackTopItems = [
   { name: "Tandoori Chicken", value: "$248K", change: "+14%" },
   { name: "Kaya Toast Set", value: "$221K", change: "+10%" },
   { name: "Cendol", value: "$118K", change: "+6%" },
 ];
 
-const performanceRows = [
+const fallbackPerformanceRows = [
   { name: "Kaya Toast Set", sold: "2,420", revenue: "$89K", status: "Growing" },
   { name: "Roti Canai", sold: "1,882", revenue: "$52K", status: "Stable" },
   { name: "Teh Tarik", sold: "3,108", revenue: "$48K", status: "Watch" },
 ];
 
+function formatNumber(value: number) {
+  return value.toLocaleString("en-US");
+}
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function getDayLabel(period: string) {
+  return new Intl.DateTimeFormat("en-US", { weekday: "short" }).format(new Date(period));
+}
+
 export default function SalesAnalyticsPage() {
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [salesTrends, setSalesTrends] = useState<SalesTrendPoint[]>([]);
+  const [topMenuItems, setTopMenuItems] = useState<MenuItemMetric[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadSalesAnalytics() {
+      try {
+        const [summaryData, trendData, topItemsData] = await Promise.all([
+          getDashboardSummary(),
+          getSalesTrends(),
+          getTopMenuItems(),
+        ]);
+
+        setSummary(summaryData);
+        setSalesTrends(trendData);
+        setTopMenuItems(topItemsData);
+        setError(null);
+      } catch (err) {
+        console.error("Failed to load sales analytics", err);
+        setError("Could not load live sales analytics. Showing fallback data.");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadSalesAnalytics();
+  }, []);
+
+  const topPerformer = topMenuItems[0];
+  const averageTicket =
+    summary && summary.total_quantity_sold > 0
+      ? summary.total_revenue / summary.total_quantity_sold
+      : null;
+
+  const summaryCards = [
+    {
+      title: "Revenue summary",
+      value: loading ? "Loading..." : summary ? formatCurrency(summary.total_revenue) : "$1.24M",
+      detail: "Total revenue from the connected dataset",
+      icon: CircleDollarSign,
+      tone: "bg-teal-50 text-teal-700",
+    },
+    {
+      title: "Quantity sold",
+      value: loading ? "Loading..." : summary ? formatNumber(summary.total_quantity_sold) : "18,420",
+      detail: "Units sold across the connected dataset",
+      icon: PackageCheck,
+      tone: "bg-emerald-50 text-emerald-700",
+    },
+    {
+      title: "Average ticket",
+      value: loading ? "Loading..." : averageTicket ? formatCurrency(averageTicket) : "$16.80",
+      detail: "Average revenue per sold unit",
+      icon: TrendingUp,
+      tone: "bg-amber-50 text-amber-700",
+    },
+    {
+      title: "Top performer",
+      value: loading ? "Loading..." : topPerformer?.menu_item_name ?? "Tandoori Chicken",
+      detail: "Highest revenue item in the dataset",
+      icon: UtensilsCrossed,
+      tone: "bg-sky-50 text-sky-700",
+    },
+  ];
+
+  const trendBars = useMemo(() => {
+    if (!salesTrends.length) {
+      return fallbackTrendBars;
+    }
+
+    const latestTrends = salesTrends.slice(-7);
+    const maxRevenue = Math.max(...latestTrends.map((point) => point.revenue), 1);
+
+    return latestTrends.map((point) => ({
+      label: getDayLabel(point.period),
+      height: `${Math.max((point.revenue / maxRevenue) * 100, 8)}%`,
+    }));
+  }, [salesTrends]);
+
+  const topItems = topMenuItems.length
+    ? topMenuItems.slice(0, 3).map((item) => ({
+        name: item.menu_item_name,
+        value: formatCurrency(item.revenue),
+        change: `${formatNumber(item.quantity_sold)} sold`,
+      }))
+    : fallbackTopItems;
+
+  const performanceRows = topMenuItems.length
+    ? topMenuItems.slice(0, 5).map((item, index) => ({
+        name: item.menu_item_name,
+        sold: formatNumber(item.quantity_sold),
+        revenue: formatCurrency(item.revenue),
+        status: index === 0 ? "Top revenue" : item.average_waste_ratio > 0.1 ? "Watch" : "Stable",
+      }))
+    : fallbackPerformanceRows;
+
   return (
     <AppShell
       title="Sales Analytics"
       subtitle="Operations overview"
       description="A lightweight MVP view for daily sales movement and high-value items."
     >
+      {error ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+          {error}
+        </div>
+      ) : null}
+
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {summaryCards.map((item, index) => {
           const Icon = item.icon;

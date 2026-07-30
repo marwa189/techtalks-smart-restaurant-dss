@@ -31,6 +31,15 @@ export type WasteMetric = {
   average_waste_ratio: number | null;
 };
 
+export type HighWasteLowSalesItem = {
+  menu_item_name: string;
+  quantity_sold: number;
+  revenue: number;
+  waste_quantity: number;
+  average_waste_ratio: number;
+  reason: string;
+};
+
 export type Recommendation = {
   target_type: string;
   target_name: string;
@@ -63,6 +72,10 @@ export async function getTopMenuItems(): Promise<MenuItemMetric[]> {
 
 export async function getMenuItemWaste(): Promise<WasteMetric[]> {
   return getJson<WasteMetric[]>("/analytics/waste/menu-items?limit=10");
+}
+
+export async function getHighWasteLowSales(): Promise<HighWasteLowSalesItem[]> {
+  return getJson<HighWasteLowSalesItem[]>("/analytics/high-waste-low-sales");
 }
 
 export async function getRecommendations(): Promise<Recommendation[]> {
