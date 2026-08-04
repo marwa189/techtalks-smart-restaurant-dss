@@ -40,6 +40,13 @@ export type HighWasteLowSalesItem = {
   reason: string;
 };
 
+export type ForecastPoint = {
+  menu_item_name: string;
+  forecast_date: string;
+  predicted_quantity_sold: number;
+  model_name: string;
+};
+
 export type Recommendation = {
   target_type: string;
   target_name: string;
@@ -76,6 +83,10 @@ export async function getMenuItemWaste(): Promise<WasteMetric[]> {
 
 export async function getHighWasteLowSales(): Promise<HighWasteLowSalesItem[]> {
   return getJson<HighWasteLowSalesItem[]>("/analytics/high-waste-low-sales");
+}
+
+export async function getForecastMenuItems(): Promise<ForecastPoint[]> {
+  return getJson<ForecastPoint[]>("/forecast/menu-items?days=7&limit=10");
 }
 
 export async function getRecommendations(): Promise<Recommendation[]> {

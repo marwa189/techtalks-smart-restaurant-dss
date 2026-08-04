@@ -7,7 +7,6 @@ import {
   BarChart3,
   Bell,
   LayoutDashboard,
-  Leaf,
   Search,
   Sparkles,
   UtensilsCrossed,

@@ -1,7 +1,11 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import { AppShell } from "../components/app-shell";
+import { getRecommendations, type Recommendation } from "../../lib/api";
 import { AlertTriangle, Sparkles, Target } from "lucide-react";
 
-const recommendations = [
+const fallbackRecommendations = [
   {
     severity: "High",
     title: "Increase prep for the weekend set",
@@ -23,12 +27,48 @@ const recommendations = [
 ];
 
 export default function RecommendationsPage() {
+  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadRecommendations() {
+      try {
+        const data = await getRecommendations();
+        setRecommendations(data);
+        setError(null);
+      } catch (err) {
+        console.error("Failed to load recommendations", err);
+        setError("Could not load live recommendations. Showing fallback data.");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadRecommendations();
+  }, []);
+
+  const displayRecommendations = recommendations.length
+    ? recommendations.map((item) => ({
+        severity: item.severity,
+        title: item.recommendation_text,
+        reason: item.reason,
+        item: item.target_name,
+      }))
+    : fallbackRecommendations;
+
   return (
     <AppShell
       title="Recommendations"
       subtitle="Action center"
       description="A clean MVP list of operational actions for the team to review."
     >
+      {error ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+          {error}
+        </div>
+      ) : null}
+
       <section className="rounded-[28px] border border-slate-200/80 bg-white p-4 shadow-sm sm:p-5">
         <div className="mb-4 flex items-center justify-between">
           <div>
@@ -36,12 +76,12 @@ export default function RecommendationsPage() {
             <h2 className="text-lg font-semibold text-slate-900">Priority recommendations</h2>
           </div>
           <div className="rounded-full bg-teal-50 px-3 py-1 text-sm font-medium text-teal-700">
-            3 active
+            {loading ? "Loading..." : `${displayRecommendations.length} active`}
           </div>
         </div>
 
         <div className="space-y-3">
-          {recommendations.map((item) => (
+          {displayRecommendations.map((item) => (
             <article key={item.title} className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="flex gap-3">

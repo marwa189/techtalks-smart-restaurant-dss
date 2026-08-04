@@ -1,26 +1,104 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import { AppShell } from "../components/app-shell";
+import { getForecastMenuItems, type ForecastPoint } from "../../lib/api";
 import { CalendarDays, CircleCheckBig, TrendingUp } from "lucide-react";
 
-const statusCards = [
-  { title: "Forecast window", value: "Next 7 days", detail: "Coverage prepared for upcoming demand", icon: CalendarDays, tone: "bg-teal-50 text-teal-700" },
-  { title: "Confidence", value: "High", detail: "Demand signal quality is above target", icon: CircleCheckBig, tone: "bg-emerald-50 text-emerald-700" },
-  { title: "Expected lift", value: "+9%", detail: "Demand growth for weekend service", icon: TrendingUp, tone: "bg-amber-50 text-amber-700" },
-];
-
-const forecastRows = [
+const fallbackForecastRows = [
   { item: "Tandoori Chicken", date: "Aug 02", quantity: "1,280", status: "Stable" },
   { item: "Kaya Toast Set", date: "Aug 02", quantity: "1,140", status: "Rising" },
   { item: "Cendol", date: "Aug 03", quantity: "860", status: "Watch" },
   { item: "Teh Tarik", date: "Aug 03", quantity: "940", status: "Stable" },
 ];
 
+function formatNumber(value: number) {
+  return value.toLocaleString("en-US");
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "2-digit",
+  }).format(new Date(value));
+}
+
 export default function ForecastPage() {
+  const [forecastRows, setForecastRows] = useState<ForecastPoint[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadForecast() {
+      try {
+        const data = await getForecastMenuItems();
+        setForecastRows(data);
+        setError(null);
+      } catch (err) {
+        console.error("Failed to load forecast", err);
+        setError("Could not load live forecast data. Showing fallback data.");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadForecast();
+  }, []);
+
+  const uniqueDates = new Set(forecastRows.map((row) => row.forecast_date));
+  const averageQuantity =
+    forecastRows.length > 0
+      ? Math.round(
+          forecastRows.reduce((total, row) => total + row.predicted_quantity_sold, 0) /
+            forecastRows.length
+        )
+      : 0;
+
+  const statusCards = [
+    {
+      title: "Forecast window",
+      value: loading ? "Loading..." : forecastRows.length ? `${uniqueDates.size} days` : "Next 7 days",
+      detail: "Coverage prepared for upcoming demand",
+      icon: CalendarDays,
+      tone: "bg-teal-50 text-teal-700",
+    },
+    {
+      title: "Model",
+      value: loading ? "Loading..." : forecastRows[0]?.model_name ?? "Pending",
+      detail: "Prediction method used by backend",
+      icon: CircleCheckBig,
+      tone: "bg-emerald-50 text-emerald-700",
+    },
+    {
+      title: "Avg predicted prep",
+      value: loading ? "Loading..." : forecastRows.length ? formatNumber(averageQuantity) : "860",
+      detail: "Average predicted quantity per row",
+      icon: TrendingUp,
+      tone: "bg-amber-50 text-amber-700",
+    },
+  ];
+
+  const displayRows = forecastRows.length
+    ? forecastRows.slice(0, 12).map((row) => ({
+        item: row.menu_item_name,
+        date: formatDate(row.forecast_date),
+        quantity: formatNumber(row.predicted_quantity_sold),
+        status: row.predicted_quantity_sold >= averageQuantity ? "High demand" : "Normal",
+      }))
+    : fallbackForecastRows;
+
   return (
     <AppShell
       title="Forecast"
       subtitle="Demand planning"
       description="A simple forecast MVP with predicted demand, dates, and confidence."
     >
+      {error ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+          {error}
+        </div>
+      ) : null}
+
       <section className="grid gap-4 md:grid-cols-3">
         {statusCards.map((item, index) => {
           const Icon = item.icon;
@@ -53,7 +131,7 @@ export default function ForecastPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 bg-white text-slate-700">
-              {forecastRows.map((row) => (
+              {displayRows.map((row) => (
                 <tr key={`${row.item}-${row.date}`}>
                   <td className="px-3 py-3 font-semibold">{row.item}</td>
                   <td className="px-3 py-3">{row.date}</td>
