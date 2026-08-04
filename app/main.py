@@ -26,6 +26,7 @@ app.add_middleware(
 app.include_router(datasets.router)
 app.include_router(analytics.router)
 app.include_router(recommendations.router)
+app.include_router(recommendations.ai_router)
 
 
 @app.exception_handler(SQLAlchemyError)
